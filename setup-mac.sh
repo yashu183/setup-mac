@@ -39,7 +39,44 @@ load_brew() {
 }
 
 brew_formula() { brew list --formula "$1" &>/dev/null && return $SKIP; brew install "$1"; }
-brew_cask()    { brew list --cask "$1" &>/dev/null && return $SKIP; brew install --cask "$1"; }
+
+# Keep cask app details in additionals even after Homebrew's cache is cleared.
+record_cask_app() {
+  local cask="$1" app="$2" install_source="$3" path version caskroom_path
+  if [ -d "/Applications/$app.app" ]; then
+    path="/Applications/$app.app"
+  elif [ -d "$HOME/Applications/$app.app" ]; then
+    path="$HOME/Applications/$app.app"
+  else
+    echo "Cannot record $app: installed app not found." >&2
+    return 1
+  fi
+  version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$path/Contents/Info.plist" 2>/dev/null)" ||
+    version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$path/Contents/Info.plist")" || return 1
+  if [ -z "$version" ]; then
+    echo "Cannot record $app: installed version is empty." >&2
+    return 1
+  fi
+  caskroom_path="$(brew --prefix)/Caskroom/$cask" || return 1
+  mkdir -p "$ADDITIONALS_DIR/$cask" || return 1
+  printf 'App: %s\nVersion: %s\nInstalled through: %s\nInstalled path: %s\nHomebrew Caskroom path: %s\n' \
+    "$app" "$version" "$install_source" "$path" "$caskroom_path" \
+    > "$ADDITIONALS_DIR/$cask/installed.txt"
+}
+
+brew_cask() {
+  local cask="$1" app="$2"
+  if brew list --cask "$cask" &>/dev/null; then
+    record_cask_app "$cask" "$app" "Homebrew cask ($cask)" || return 1
+    return $SKIP
+  fi
+  if have_app "$app"; then
+    record_cask_app "$cask" "$app" "Pre-existing app; source unknown" || return 1
+    return $SKIP
+  fi
+  brew install --cask "$cask" || return 1
+  record_cask_app "$cask" "$app" "Homebrew cask ($cask)"
+}
 
 # ---------------------------------------------------------------------------
 # 1. Xcode Command Line Tools (provides git, needed by Homebrew)
@@ -93,8 +130,12 @@ config_git() {
 # 4. Docker + images
 # ---------------------------------------------------------------------------
 install_docker() {
-  have_app Docker && return $SKIP
-  brew_cask docker-desktop || brew_cask docker
+  brew_cask docker-desktop Docker
+  local rc=$?
+  if [ "$rc" -eq 0 ] || [ "$rc" -eq "$SKIP" ]; then
+    return "$rc"
+  fi
+  brew_cask docker Docker
 }
 
 pull_docker_images() {
@@ -185,6 +226,19 @@ install_nvm() {
   curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | PROFILE=/dev/null bash
 }
 
+install_node_npm() {
+  local nvm_sh="$HOME/.nvm/nvm.sh"
+  [ -s "$nvm_sh" ] || { echo "nvm is not installed." >&2; return 1; }
+  . "$nvm_sh" || return 1
+  if nvm use default >/dev/null 2>&1 && have_cmd node && have_cmd npm; then
+    return $SKIP
+  fi
+  nvm install --lts || return 1
+  nvm alias default 'lts/*' || return 1
+  nvm use default >/dev/null || return 1
+  have_cmd node && have_cmd npm
+}
+
 install_uv() {
   { have_cmd uv || [ -x "$HOME/.local/bin/uv" ]; } && return $SKIP
   curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 sh
@@ -260,6 +314,12 @@ install_app() {
 install_chrome() { install_app chrome "Google Chrome" googlechrome.dmg "https://dl.google.com/chrome/mac/universal/stable/GGRO/googlechrome.dmg"; }
 install_brave()  { install_app brave "Brave Browser" Brave-Browser.dmg "https://laptop-updates.brave.com/latest/osx"; }
 install_vscode() { install_app vsc "Visual Studio Code" VSCode.zip "https://update.code.visualstudio.com/latest/darwin-universal/stable"; }
+install_postman() { brew_cask postman Postman; }
+cleanup_brew_cache() {
+  load_brew
+  have_cmd brew || return $SKIP
+  brew cleanup --prune=all --scrub
+}
 
 # ---------------------------------------------------------------------------
 # Run
@@ -278,12 +338,15 @@ step "Python"                        install_python
 step "Oh My Zsh"                     install_oh_my_zsh
 step "zsh-syntax-highlighting"       install_zsh_syntax_highlighting
 step "nvm"                           install_nvm
+step "Node.js (npm)"                install_node_npm
 step "uv"                            install_uv
 step "Claude Code CLI"               install_claude_code
 step ".zshrc"                        config_zshrc
 step "Google Chrome"                 install_chrome
 step "Brave Browser"                 install_brave
 step "VS Code"                       install_vscode
+step "Postman"                       install_postman
+step "Homebrew cache cleanup"        cleanup_brew_cache
 
 # ---------------------------------------------------------------------------
 # Summary
