@@ -9,6 +9,11 @@ SKIPPED=()
 FAILED=()
 SKIP=100  # return code meaning "already installed"
 
+# Everything printed below is also saved to a log file.
+mkdir -p "$ADDITIONALS_DIR"
+LOG_FILE="$ADDITIONALS_DIR/setup-mac.$TS.log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
 step() {
@@ -29,6 +34,41 @@ step() {
 
 have_cmd() { command -v "$1" &>/dev/null; }
 have_app() { [ -d "/Applications/$1.app" ] || [ -d "$HOME/Applications/$1.app" ]; }
+
+# Ask before replacing an existing file.
+# Returns 0 = go ahead (existing file backed up), 1 = user chose skip, 2 = error.
+confirm_overwrite() {
+  local file="$1" ans
+  if [ ! -e "$file" ]; then
+    echo "$file not found; creating it."
+    return 0
+  fi
+  echo "Found existing config: $file"
+  if ! { : </dev/tty; } 2>/dev/null; then
+    echo "No terminal available to ask; leaving $file untouched."
+    return 1
+  fi
+  while true; do
+    printf 'Overwrite %s? [o]verwrite (backup is kept) / [s]kip: ' "$file" >/dev/tty
+    read -r ans </dev/tty || return 1
+    case "$ans" in
+      o|O|overwrite)
+        echo "User chose: overwrite $file"
+        if cp -p "$file" "$file.bak.$TS"; then
+          echo "Backed up $file -> $file.bak.$TS"
+          return 0
+        fi
+        echo "Backup of $file failed; not overwriting." >&2
+        return 2
+        ;;
+      s|S|skip)
+        echo "User chose: skip, $file left untouched."
+        return 1
+        ;;
+      *) echo "Please answer o or s." >/dev/tty ;;
+    esac
+  done
+}
 
 load_brew() {
   if [ -x /opt/homebrew/bin/brew ]; then
@@ -139,7 +179,7 @@ install_docker() {
 }
 
 pull_docker_images() {
-  local images=(mysql:8.0 postgres:16 redis mongo) missing=() img
+  local images=(mysql:8.0 postgres:16 redis mongo neo4j) missing=() img
   have_cmd docker || return 1
   for img in "${images[@]}"; do
     docker image inspect "$img" &>/dev/null || missing+=("$img")
@@ -186,7 +226,9 @@ install_python() {
 # ---------------------------------------------------------------------------
 config_ssh() {
   mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh" || return 1
-  [ -f "$HOME/.ssh/config" ] && cp "$HOME/.ssh/config" "$HOME/.ssh/config.bak.$TS"
+  confirm_overwrite "$HOME/.ssh/config"
+  case $? in 0) ;; 1) return $SKIP ;; *) return 1 ;; esac
+  echo "Writing $HOME/.ssh/config"
   cat > "$HOME/.ssh/config" <<'EOF'
 Host 192.168.29.111
   HostName 192.168.29.111
@@ -201,7 +243,7 @@ Host ssh.yashu.fun
     User jacksparrow
 
 EOF
-  chmod 600 "$HOME/.ssh/config"
+  chmod 600 "$HOME/.ssh/config" && echo "Wrote $HOME/.ssh/config (mode 600)"
 }
 
 install_cloudflared() { have_cmd cloudflared && return $SKIP; brew_formula cloudflared; }
@@ -250,7 +292,9 @@ install_claude_code() {
 }
 
 config_zshrc() {
-  [ -f "$HOME/.zshrc" ] && cp "$HOME/.zshrc" "$HOME/.zshrc.bak.$TS"
+  confirm_overwrite "$HOME/.zshrc"
+  case $? in 0) ;; 1) return $SKIP ;; *) return 1 ;; esac
+  echo "Writing $HOME/.zshrc"
   cat > "$HOME/.zshrc" <<'EOF'
 # Path to your Oh My Zsh installation.
 export ZSH="$HOME/.oh-my-zsh"
@@ -277,35 +321,51 @@ export PATH="$HOME/.local/bin:$PATH"
 # Added by Antigravity
 export PATH="$HOME/.antigravity/antigravity/bin:$PATH"
 EOF
+  echo "Wrote $HOME/.zshrc"
 }
 
 # ---------------------------------------------------------------------------
 # 8. DMG / ZIP apps -> ~/Yashu/additionals/<folder>
 # ---------------------------------------------------------------------------
+# Verify an app bundle's code signature and Gatekeeper acceptance.
+verify_app() {
+  local path="$1"
+  codesign --verify --deep --strict "$path" || { echo "Code signature check FAILED for $path" >&2; return 1; }
+  spctl --assess --type execute "$path" || { echo "Gatekeeper rejected $path" >&2; return 1; }
+  echo "Signature OK: $(codesign -dv "$path" 2>&1 | grep TeamIdentifier | head -1)"
+}
+
 install_app() {
-  local folder app="$2" file="$3" url="$4"
+  local folder app="$2" file="$3" url="$4" sha
   folder="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
   local dir="$ADDITIONALS_DIR/$folder"
   have_app "$app" && return $SKIP
   mkdir -p "$dir" || return 1
+  echo "Downloading $url"
   curl -fL -o "$dir/$file" "$url" || return 1
+  # "latest" URLs publish no fixed checksum, so record the hash and rely on the signature check below.
+  sha="$(shasum -a 256 "$dir/$file" | awk '{print $1}')" || return 1
+  echo "SHA-256 of $file: $sha"
+  echo "$sha  $file" > "$dir/$file.sha256"
 
   case "$file" in
     *.dmg)
       local mnt
       mnt="$(mktemp -d /tmp/dmg.XXXXXX)"
       hdiutil attach -nobrowse -quiet -mountpoint "$mnt" "$dir/$file" || return 1
-      ditto "$mnt/$app.app" "/Applications/$app.app"
+      verify_app "$mnt/$app.app" && ditto "$mnt/$app.app" "/Applications/$app.app"
       local rc=$?
       hdiutil detach -quiet "$mnt"
+      [ $rc -eq 0 ] && echo "Installed /Applications/$app.app"
       return $rc
       ;;
     *.zip)
       local tmp
       tmp="$(mktemp -d /tmp/zip.XXXXXX)"
-      ditto -xk "$dir/$file" "$tmp" && ditto "$tmp/$app.app" "/Applications/$app.app"
+      ditto -xk "$dir/$file" "$tmp" && verify_app "$tmp/$app.app" && ditto "$tmp/$app.app" "/Applications/$app.app"
       local rc=$?
       rm -rf "$tmp"
+      [ $rc -eq 0 ] && echo "Installed /Applications/$app.app"
       return $rc
       ;;
   esac
@@ -329,7 +389,7 @@ step "Homebrew"                      install_homebrew
 step "Git"                           install_git
 step "Git aliases & push config"     config_git
 step "Docker Desktop"                install_docker
-step "Docker images (mysql:8.0, postgres:16, redis, mongo)" pull_docker_images
+step "Docker images (mysql:8.0, postgres:16, redis, mongo, neo4j)" pull_docker_images
 step "Ollama"                        install_ollama
 step "SSH config"                    config_ssh
 step "cloudflared"                   install_cloudflared
@@ -338,7 +398,7 @@ step "Python"                        install_python
 step "Oh My Zsh"                     install_oh_my_zsh
 step "zsh-syntax-highlighting"       install_zsh_syntax_highlighting
 step "nvm"                           install_nvm
-step "Node.js (npm)"                install_node_npm
+step "Node.js (npm)"                 install_node_npm
 step "uv"                            install_uv
 step "Claude Code CLI"               install_claude_code
 step ".zshrc"                        config_zshrc
@@ -364,4 +424,6 @@ if [ ${#FAILED[@]} -gt 0 ]; then
 fi
 echo
 echo "Backups (if any): ~/.zshrc.bak.$TS, ~/.ssh/config.bak.$TS"
+echo "Log file: $LOG_FILE"
 echo "Open a new terminal or run: source ~/.zshrc"
+sleep 1  # let the log tee flush before the shell prompt returns
