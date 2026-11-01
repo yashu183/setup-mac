@@ -17,16 +17,71 @@ Run it in Terminal, not piped, because it asks questions on the terminal.
 
 ## What it installs
 
-| Area | Items |
-| --- | --- |
-| Base | Xcode Command Line Tools, Homebrew |
-| Git | Git, plus global aliases and `push.autoSetupRemote` |
-| Docker | Docker Desktop, then pulls `mysql:8.0`, `postgres:16`, `redis`, `mongo`, `neo4j` |
-| CLI tools | Ollama, cloudflared, AWS CLI, Python (Homebrew) |
-| Shell | Oh My Zsh, zsh-syntax-highlighting, nvm and Node LTS, uv, Claude Code CLI |
-| Config | `~/.ssh/config` (three hosts, one via cloudflared), `~/.zshrc` |
-| Apps | Google Chrome, Brave, VS Code (direct download), Postman (Homebrew cask) |
-| Cleanup | `brew cleanup --prune=all --scrub` |
+<table>
+<thead><tr><th>Area</th><th>Items</th><th>Method</th></tr></thead>
+<tbody>
+<tr>
+<td rowspan="2" valign="middle">Base</td>
+<td>Xcode Command Line Tools</td><td><code>xcode-select --install</code></td></tr>
+<tr>
+<td>Homebrew</td><td>curl (install script)</td></tr>
+<tr>
+<td rowspan="2" valign="middle">Git</td>
+<td>Git</td><td>Homebrew</td></tr>
+<tr>
+<td>Global aliases and <code>push.autoSetupRemote</code></td><td><code>git config --global</code></td></tr>
+<tr>
+<td rowspan="6" valign="middle">Docker</td>
+<td>Docker Desktop (falls back to the <code>docker</code> cask if <code>docker-desktop</code> fails)</td><td>Homebrew cask</td></tr>
+<tr>
+<td><code>mysql:8.0</code> image</td><td><code>docker pull</code></td></tr>
+<tr>
+<td><code>postgres:16</code> image</td><td><code>docker pull</code></td></tr>
+<tr>
+<td><code>redis</code> image</td><td><code>docker pull</code></td></tr>
+<tr>
+<td><code>mongo</code> image</td><td><code>docker pull</code></td></tr>
+<tr>
+<td><code>neo4j</code> image</td><td><code>docker pull</code></td></tr>
+<tr>
+<td rowspan="4" valign="middle">CLI tools</td>
+<td>Ollama</td><td>Homebrew</td></tr>
+<tr>
+<td>cloudflared</td><td>Homebrew</td></tr>
+<tr>
+<td>AWS CLI</td><td>Homebrew</td></tr>
+<tr>
+<td>Python</td><td>Homebrew</td></tr>
+<tr>
+<td rowspan="5" valign="middle">Shell</td>
+<td>zsh-syntax-highlighting</td><td>Homebrew</td></tr>
+<tr>
+<td>Oh My Zsh</td><td>curl (install script)</td></tr>
+<tr>
+<td>nvm (then Node LTS through nvm)</td><td>curl (install script)</td></tr>
+<tr>
+<td>uv</td><td>curl (install script)</td></tr>
+<tr>
+<td>Claude Code CLI</td><td>curl (install script)</td></tr>
+<tr>
+<td rowspan="2" valign="middle">Config</td>
+<td><code>~/.ssh/config</code> (three hosts, one via cloudflared)</td><td>Written by the script</td></tr>
+<tr>
+<td><code>~/.zshrc</code></td><td>Written by the script</td></tr>
+<tr>
+<td rowspan="4" valign="middle">Apps</td>
+<td>Google Chrome (<code>.dmg</code>)</td><td>curl (direct download)</td></tr>
+<tr>
+<td>Brave (<code>.dmg</code>)</td><td>curl (direct download)</td></tr>
+<tr>
+<td>VS Code (<code>.zip</code>)</td><td>curl (direct download)</td></tr>
+<tr>
+<td>Postman</td><td>Homebrew cask</td></tr>
+<tr>
+<td rowspan="1" valign="middle">Cleanup</td>
+<td><code>brew cleanup --prune=all --scrub</code></td><td>Homebrew</td></tr>
+</tbody>
+</table>
 
 ## Git aliases
 
