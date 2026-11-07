@@ -350,12 +350,18 @@ install_app() {
 
   case "$file" in
     *.dmg)
-      local mnt
+      local mnt stage
       mnt="$(mktemp -d /tmp/dmg.XXXXXX)"
-      hdiutil attach -nobrowse -quiet -mountpoint "$mnt" "$dir/$file" || return 1
-      verify_app "$mnt/$app.app" && ditto "$mnt/$app.app" "/Applications/$app.app"
+      stage="$(mktemp -d /tmp/stage.XXXXXX)"
+      hdiutil attach -nobrowse -quiet -readonly -mountpoint "$mnt" "$dir/$file" || { rm -rf "$stage"; return 1; }
+      # Copy off the DMG without resource forks / xattrs first: on the mounted volume they
+      # make `codesign --strict` fail with "resource fork, Finder information ... not allowed".
+      ditto --norsrc --noextattr --noacl "$mnt/$app.app" "$stage/$app.app"
       local rc=$?
-      hdiutil detach -quiet "$mnt"
+      hdiutil detach -quiet "$mnt" && rmdir "$mnt"
+      [ $rc -eq 0 ] && verify_app "$stage/$app.app" && ditto "$stage/$app.app" "/Applications/$app.app"
+      rc=$?
+      rm -rf "$stage"
       [ $rc -eq 0 ] && echo "Installed /Applications/$app.app"
       return $rc
       ;;
