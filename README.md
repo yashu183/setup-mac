@@ -13,7 +13,7 @@ Run it in Terminal, not piped, because it asks questions on the terminal.
 - **Safe to re-run.** Each step checks whether the thing is already installed and skips it if so.
 - **Steps are independent.** A failed step does not stop the rest. A summary at the end lists what was done, skipped and failed.
 - **Asks before overwriting config.** If `~/.zshrc` or `~/.ssh/config` already exists, you choose `[o]verwrite` or `[s]kip`. Overwrite keeps a backup at `<file>.bak.<timestamp>`. With no terminal available, it skips.
-- **Logs everything.** The full run is saved to `~/Yashu/additionals/setup-mac.<timestamp>.log`. The log contains terminal colour codes, so view it with `cat`.
+- **Logs everything.** The full run is saved to `~/Yashu/additionals/setup-mac-logs/setup-mac.<timestamp>.log`. The log contains terminal colour codes, so view it with `cat`.
 
 ## What it installs
 
@@ -44,12 +44,14 @@ Run it in Terminal, not piped, because it asks questions on the terminal.
 <tr>
 <td><code>neo4j</code> image</td><td><code>docker pull</code></td></tr>
 <tr>
-<td rowspan="4" valign="middle">CLI tools</td>
+<td rowspan="5" valign="middle">CLI tools</td>
 <td>Ollama</td><td>Homebrew</td></tr>
 <tr>
 <td>cloudflared</td><td>Homebrew</td></tr>
 <tr>
 <td>AWS CLI</td><td>Homebrew</td></tr>
+<tr>
+<td>chronokey</td><td>Homebrew (tap <code>yashu183/chronokey</code>)</td></tr>
 <tr>
 <td>Python</td><td>Homebrew</td></tr>
 <tr>
@@ -118,4 +120,4 @@ Homebrew cask installs write an `installed.txt` (app, version, source, paths) to
 
 - Docker images need the daemon running. If it is down, the script starts Docker Desktop and waits up to 5 minutes (you may need to accept the licence dialog).
 - Paths assume Apple Silicon (`/opt/homebrew`).
-- After the run, open a new terminal or run `source ~/.zshrc`.
+- After the run, the summary prints a TODO list of manual steps: reload the shell (`source ~/.zshrc` or open a new terminal) and set up 2FA keys with `chronokey setup`.

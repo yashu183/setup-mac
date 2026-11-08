@@ -10,8 +10,9 @@ FAILED=()
 SKIP=100  # return code meaning "already installed"
 
 # Everything printed below is also saved to a log file.
-mkdir -p "$ADDITIONALS_DIR"
-LOG_FILE="$ADDITIONALS_DIR/setup-mac.$TS.log"
+LOG_DIR="$ADDITIONALS_DIR/setup-mac-logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/setup-mac.$TS.log"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
@@ -249,6 +250,16 @@ EOF
 install_cloudflared() { have_cmd cloudflared && return $SKIP; brew_formula cloudflared; }
 install_awscli()      { have_cmd aws && return $SKIP; brew_formula awscli; }
 
+install_chronokey() {
+  have_cmd chronokey && return $SKIP
+  brew tap yashu183/chronokey || return 1
+  # Newer Homebrew refuses to load third-party tap formulae until the tap is trusted.
+  if brew help trust &>/dev/null; then
+    brew trust yashu183/chronokey || return 1
+  fi
+  brew_formula yashu183/chronokey/chronokey
+}
+
 # ---------------------------------------------------------------------------
 # 7. Zsh: oh-my-zsh, plugins, nvm, uv, .zshrc
 # ---------------------------------------------------------------------------
@@ -400,6 +411,7 @@ step "Ollama"                        install_ollama
 step "SSH config"                    config_ssh
 step "cloudflared"                   install_cloudflared
 step "AWS CLI"                       install_awscli
+step "chronokey"                     install_chronokey
 step "Python"                        install_python
 step "Oh My Zsh"                     install_oh_my_zsh
 step "zsh-syntax-highlighting"       install_zsh_syntax_highlighting
@@ -431,5 +443,8 @@ fi
 echo
 echo "Backups (if any): ~/.zshrc.bak.$TS, ~/.ssh/config.bak.$TS"
 echo "Log file: $LOG_FILE"
-echo "Open a new terminal or run: source ~/.zshrc"
+echo
+printf '\033[1;33mTODO (manual steps):\033[0m\n'
+echo "  1. Reload your shell: source ~/.zshrc (or open a new terminal)"
+echo "  2. Set up your 2FA (TOTP) keys: run 'chronokey setup' once per account"
 sleep 1  # let the log tee flush before the shell prompt returns
